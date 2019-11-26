@@ -1,0 +1,103 @@
+diff --git a/arch/x86/entry/syscalls/syscall_64.tbl b/arch/x86/entry/syscalls/syscall_64.tbl
+index f0b1709a5ffb..d4d894cd45b9 100644
+--- a/arch/x86/entry/syscalls/syscall_64.tbl
++++ b/arch/x86/entry/syscalls/syscall_64.tbl
+@@ -343,6 +343,8 @@
+ 332	common	statx			__x64_sys_statx
+ 333	common	io_pgetevents		__x64_sys_io_pgetevents
+ 334	common	rseq			__x64_sys_rseq
++335	common	set_access_level	__x64_sys_set_access_level
++336	common	get_access_level	__x64_sys_get_access_level
+ 
+ #
+ # x32-specific system call numbers start at 512 to avoid cache impact
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index a6c699f5ceb4..8bd07594a445 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1184,6 +1184,7 @@ struct task_struct {
+ 	void				*security;
+ #endif
+ 
++	unsigned int access_level;
+ 	/*
+ 	 * New fields for task_struct should be added above here, so that
+ 	 * they are included in the randomized portion of task_struct.
+diff --git a/include/linux/syscalls.h b/include/linux/syscalls.h
+index 5c1a0933768e..925123f1e44f 100644
+--- a/include/linux/syscalls.h
++++ b/include/linux/syscalls.h
+@@ -905,6 +905,8 @@ asmlinkage long sys_statx(int dfd, const char __user *path, unsigned flags,
+ 			  unsigned mask, struct statx __user *buffer);
+ asmlinkage long sys_rseq(struct rseq __user *rseq, uint32_t rseq_len,
+ 			 int flags, uint32_t sig);
++asmlinkage long sys_set_access_level(int pid, int new_level);
++asmlinkage long sys_get_access_level(int pid);
+ 
+ /*
+  * Architecture-specific system calls
+diff --git a/kernel/fork.c b/kernel/fork.c
+index c21b4e1f29f8..267920640404 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -1879,6 +1879,7 @@ static __latent_entropy struct task_struct *copy_process(
+ 	clear_all_latency_tracing(p);
+ 
+ 	/* ok, now we should be set up.. */
++	p->access_level = 0;
+ 	p->pid = pid_nr(pid);
+ 	if (clone_flags & CLONE_THREAD) {
+ 		p->exit_signal = -1;
+diff --git a/kernel/sys.c b/kernel/sys.c
+index af8ced3857b7..aa8b108d53ea 100644
+--- a/kernel/sys.c
++++ b/kernel/sys.c
+@@ -195,6 +195,48 @@ static int set_one_prio(struct task_struct *p, int niceval, int error)
+ 	return error;
+ }
+ 
++SYSCALL_DEFINE2(set_access_level, int, pid, int, new_level){
++	struct task_struct *proc = find_task_by_vpid(pid);
++	//process to be changed doesn't exist or invalid access_level change
++	if(!proc || new_level < 0){
++		return -1;
++	}
++
++	//superuser can change any process's access_level attribute
++	if(current_uid().val == 0){
++		proc->access_level = new_level;
++		return new_level;
++	}
++
++	//process can lower its own level
++	else if(proc->pid == current->pid){
++		if(new_level < proc->access_level){
++			proc->access_level = new_level;
++			return new_level;
++		}
++	}
++
++	//process can change any lower process's level to its own level or lower
++	else if(proc->access_level < current->access_level){
++		if(new_level <= current->access_level){
++			proc->access_level = new_level;
++			return new_level;
++		}
++	}
++
++	//catch-all
++	return -1;
++}
++
++SYSCALL_DEFINE1(get_access_level, int, pid){
++	struct task_struct *proc = find_task_by_vpid(pid);
++	//if proc isn't running, ret -1
++	if(!proc)
++		return -1;
++	//any user process may read any other process's access_level
++	return proc->access_level;
++}
++
+ SYSCALL_DEFINE3(setpriority, int, which, int, who, int, niceval)
+ {
+ 	struct task_struct *g, *p;

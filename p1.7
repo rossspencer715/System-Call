@@ -1,0 +1,91 @@
+.TH PROJECT 1
+.SH NAME
+Project 1
+
+.SH SYNOPSIS
+.B setting up a system call that modifies the process table
+
+.SH DESCRIPTION
+.B include/linux/sched.h 
+.RS 3 
+Edit 1: 
+.RS 3
+I modified this file to declare access_level (unsigned since 0 is the lowest) as an attribute for task_struct. I chose this file since I noticed struct task_struct referring to processes in a lot of files and grepped until I found that the header for this file said it was defined within. I added it above "New fields for task_struct should be added above here, so that they are included in the randomized portion of task_struct" since it told me to. 
+
+.RE .RE
+.B kernel/fork.c 
+.RS 3
+Edit 1:
+.RS 3
+I added a line setting new processes' access_level to 0 in fork.c right before they were assigned a new pid.
+The compiler seemed to initialize it to 0 already, but (since Dave taught me my lesson in data structures) just in case I initialized it to 0 here, which I chose since forking is how to create a new process in Unix (thanks, https://en.wikipedia.org/wiki/Fork_(system_call)). 
+
+.RE .RE
+.B arch/x86/entry/syscalls/syscall_64.tbl
+.RS 3
+Edits 1 and 2: 
+.RS 3
+I added my system calls to the table, assigning them the next numbers in order. When I made my kernel it wouldn't recognize the references, so I tried adding the __x64 in front of the sys_ references and it magically worked. Love that for me. I followed some videos (esp. https://www.youtube.com/watch?v=AP-tBd84vbM we love a good EDM coding tutorial...) and read a few tutorials (https://medium.com/anubhav-shrimal/adding-a-hello-world-system-call-to-linux-kernel-dad32875872 and https://brennan.io/2016/11/14/kernel-dev-ep3/) to get a feel for writing syscalls and used them in this and the next few steps.
+
+.RE .RE
+.B kernel/sys.c
+.RS 3
+Edits 1 and 2: 
+.RS 3
+To create the actual system calls, I implemented them in sys.c following the brennan.io guide's advice since I didn't want to mess with the Makefile by adding a separate directory. I used the SYSCALL_DEFINEN macros following brennan.io (and https://lwn.net/Articles/604406/) as a guide, and then coming up with the logic for my syscalls was straight-forward. 
+
+.RE .RE
+.B include/linux/syscalls.h
+.RS 3
+Edits 1 and 2: 
+.RS 3
+When I went to make my kernel after making the above changes, I got more missing references, so I added the prototypes of the functions here as described in the medium link (since that part was missing from brennan.io), putting them after sys_rseq since that's where they went in the tbl file after grepping for rseq.
+
+.RE .RE
+.B accesslevel
+.RS 3
+Edit 1: 
+.RS 3 
+I made the accesslevel directory in home/reptilian since Jeremiah's pdf told us to.
+.RE
+Edit 2: 
+.RS 3
+I made a header file with all of the prototypes described in the pdf. 
+.RE
+Edit 3: 
+.RS 3
+I implemented the library functions by calling syscall with the corresponding values from the tbl, as in the brennan.io link, and also my harness functions after asking a TA what they're supposed to do. 
+.RE
+Edit 4: 
+.RS 3
+In Makefile, I added the appropriate commands to build the library as in exercise 2.
+
+.SH TESTING
+
+.B To test my changes to the kernel, 
+I made/sudo made etcetc., and then went into my home/reptilian/ and reran "cc -o program_name sourcefile.c -L ./accesslevel -laccesslevel" for the 2 test files until I passed all cases. 
+
+Once I had these working, I used the getlevel function to make sure it worked for all of the processes listed when I run top and failed for ones not running, then used setlevel to change levels and getlevel again to guarantee it persisted.
+
+To test that my final patch and static library worked, I reverted to my initial snapshot and sftp'd the diff/accesslevel/tests/idiot.sh files over and applied it to guarantee that it works with no known bugs:)
+
+.SH BUGS
+.B No known bugs :)
+ 
+Get and set persist, test cases from TAs pass, doesn't break if passed an invalid pid, doesn't break if passed no pid, etc.
+
+.SH LINK
+.B unlisted video - 
+
+can be located at http://youtu.be/NJbbIaUxCtg?hd=1
+
+.SH REFERENCES
+https://en.wikipedia.org/wiki/Fork_(system_call) -> info on how systems are created in Unix/Linux
+
+https://www.youtube.com/watch?v=AP-tBd84vbM  -> awful EDM to boost morale :)
+
+https://medium.com/anubhav-shrimal/adding-a-hello-world-system-call-to-linux-kernel-dad32875872 -> fairly helpful introductory syscall tutorial, was still just changing things the article hold me to haphazardly at this point
+
+https://brennan.io/2016/11/14/kernel-dev-ep3/ -> the most helpful of the bunch, really helped me understand how all of the pieces come together
+
+https://lwn.net/Articles/604406/ -> gave me more info on the SYSCALL_DEFINEN macro after the brennan.io article mentioned it
